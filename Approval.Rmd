@@ -1,0 +1,101 @@
+---
+title: "Presidential Approval"
+author: "Ed Young"
+date:  '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    css: styles.css
+    highlight: null
+    theme: null
+  df_print: kable
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+     echo = FALSE,
+     warning = FALSE,
+     message = FALSE,
+     cache = FALSE
+)
+
+library(here)
+source(here("R", "load_packages.R"))
+
+## Check if volatile files do not exist, or if they do, they are 2 or more days old
+## In either case download the latest version of the volatile files.
+
+president <- readr::read_csv("https://www.nytimes.com/newsgraphics/polls/approval/president.csv")
+
+```
+
+```{r}
+# Convert end_date to Date format
+president$end_date <- as.Date(president$end_date, format = "%m/%d/%y")
+
+# Reshape the data into long format for easier plotting
+president_long <- pivot_longer(president, 
+                               cols = c("yes", "no"), 
+                               names_to = "response", 
+                               values_to = "percentage")
+
+# Plot
+ggplot(president_long, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.6) +  # Semi-transparent points
+  geom_smooth(se = FALSE, method = "loess", span = 0.5, linewidth = 1) +  # Trend lines
+  scale_color_manual(values = c("yes" = "red", "no" = "black")) +
+  labs(title = "Polling Results - All Polls",
+       x = "Poll End Date",
+       y = "Response (%)",
+       color = "Approval") +
+  theme_minimal()
+  
+```
+
+```{r}
+# Filter to only Probability Sample
+president_prob <- president %>%
+  filter(methodology == "Probability Panel")
+
+# Reshape into long format
+president_long <- pivot_longer(president_prob, 
+                               cols = c("yes", "no"), 
+                               names_to = "response", 
+                               values_to = "percentage")
+
+# Plot with trend lines
+ggplot(president_long, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.5, linewidth = 1) +
+  scale_color_manual(values = c("yes" = "red", "no" = "black")) +
+  labs(title = "Probability Panel Polls",
+       x = "Poll End Date",
+       y = "Response (%)",
+       color = "Response") +
+  theme_minimal()
+
+```
+
+```{r}
+# Filter: Probability Sample AND sample size > 1500
+president_filtered <- president %>%
+  filter(sample_size > 1500)
+
+# Reshape to long format
+president_long <- pivot_longer(president_filtered, 
+                               cols = c("yes", "no"), 
+                               names_to = "response", 
+                               values_to = "percentage")
+
+# Plot
+ggplot(president_long, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.5, linewidth = 1) +
+  scale_color_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
+  labs(title = "Sample Size Over 1500",
+       x = "Poll End Date",
+       y = "Response (%)",
+       color = "Response") +
+  theme_minimal()
+```
