@@ -23,7 +23,26 @@ knitr::opts_chunk$set(
 library(here)
 source(here("R", "load_packages.R"))
 
-president <- readr::read_csv("https://www.nytimes.com/newsgraphics/polls/approval/president.csv")
+# Define the URL and the local file path
+url <- "https://www.nytimes.com/newsgraphics/polls/approval/president.csv"
+data_dir <- "data"
+file_path <- file.path(data_dir, "president.csv")
+
+# Determine whether a download is needed:
+# - Either the file doesn't exist...
+# - Or the file exists but was last modified before today.
+download_needed <- !file.exists(file_path) ||
+  as.Date(file.info(file_path)$mtime) < Sys.Date()
+
+if (download_needed) {
+  download.file(url, file_path, mode = "wb")
+  message("Downloaded a fresh copy of president.csv.")
+} else {
+  message("The president.csv file is already up-to-date; no download needed.")
+}
+
+# Read the CSV file into R for use in your RMarkdown
+president <- read.csv(file_path, stringsAsFactors = FALSE)
 
 ```
 
