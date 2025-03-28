@@ -11,18 +11,10 @@ check_load_pkgs <- function() {
     message("installing the 'lubridate' package")
     install.packages(lubridate)
   }
-  if (!require(EpiEstim)) {
-    message("installing the 'EpiEstim' package")
-    install.packages(EpiEstim)
-  }
   if (!require(RSocrata)) {
     message("installing the 'RSocrata' package")
     install.packages(RSocrata)
   }
-  if (!require(covid19.analytics)) {
-    message("installing the 'covid19.analytics' package")
-    install.packages(covid19.analytics)
-  } 
   if (!require(knitr)) {
     message("installing the 'knitr' package")
     install.packages(knitr)

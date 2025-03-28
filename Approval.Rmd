@@ -169,7 +169,7 @@ president_long <- president_long %>%
     response == "no"  ~ predict(loess_no, newdata = data.frame(end_date = as.numeric(end_date)))
   ))
 
-label_points <- president_long %>%
+label_points <- loess_all %>%
   group_by(response) %>%
   filter(end_date == max(end_date, na.rm = TRUE)) %>%
   ungroup()
@@ -185,7 +185,7 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
   labs(title = "Weighted LOESS Smoothed Polling Trends with 95% Confidence Intervals",
        x = "Poll End Date", y = "Response (%)") +
   geom_text(data = label_points, 
-            aes(x = end_date, y = smoothed, label = paste0("Latest: ", round(smoothed, 1), "%")),
+            aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_color_manual(values = c("yes" = "red", "no" = "black")) +
   scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
