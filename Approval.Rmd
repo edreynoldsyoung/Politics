@@ -44,6 +44,87 @@ if (download_needed) {
 # Read the CSV file into R for use in your RMarkdown
 president <- read.csv(file_path, stringsAsFactors = FALSE)
 
+# Convert end_date to Date format
+
+
+president <- president %>%
+  mutate(
+    end_date = as.Date(end_date, format = "%m/%d/%y"),
+    created_at = as.Date(created_at, format = "%m/%d/%y")
+  ) %>%
+  filter(created_at >= end_date | is.na(end_date) | is.na(created_at))
+
+cv_optimal_loess_span <- function(data, 
+                                       k = 5,
+                                       span_grid = seq(0.2, 0.8, by = 0.05)) {
+
+  if (!all(c("response", "percentage", "end_date") %in% names(data))) {
+    stop("Data must contain 'response', 'percentage', and 'end_date' columns.")
+  }
+
+  if (!"sample_size" %in% names(data)) {
+    stop("Missing column: sample_size")
+  }
+
+  if (!"weight" %in% names(data)) {
+    data <- data %>% mutate(weight = sample_size)
+  }
+
+  data <- data %>%
+    mutate(date_num = as.numeric(end_date)) %>%
+    drop_na(percentage, date_num, weight)
+
+  # Apply CV separately for each response category
+  best_spans <- data %>%
+    group_split(response) %>%
+    map_df(function(df) {
+      res <- unique(df$response)
+
+      cv_errors <- tibble(span = span_grid) %>%
+        mutate(cv_error = map_dbl(span, function(span) {
+          set.seed(42)
+          df_cv <- df %>% mutate(fold = sample(1:k, n(), replace = TRUE))
+
+          fold_errors <- map_dbl(1:k, function(fold_id) {
+            train <- df_cv %>% filter(fold != fold_id)
+            test  <- df_cv %>% filter(fold == fold_id)
+
+            test <- test %>%
+              filter(date_num >= min(train$date_num),
+                     date_num <= max(train$date_num))
+
+            if (nrow(train) < 5 || nrow(test) < 1) return(Inf)
+
+            model <- tryCatch({
+              loess(percentage ~ date_num, data = train,
+                    weights = weight, span = span)
+            }, error = function(e) return(NULL))
+
+            if (is.null(model)) return(Inf)
+
+            preds <- predict(model, newdata = test)
+            if (all(is.na(preds))) return(Inf)
+
+            mean((test$percentage - preds)^2, na.rm = TRUE)
+          })
+
+          mean(fold_errors, na.rm = TRUE)
+        }))
+
+      best <- cv_errors %>%
+        slice_min(cv_error, with_ties = FALSE)
+
+      tibble(response = res, best_span = best$span)
+    })
+  
+  best_spans <- best_spans %>%
+  group_by(response) %>%
+  slice_min(best_span, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+  return(best_spans)
+}
+
 ```
 
 # I am using the New York Times Presidential Approval Polls to look at trends over time.  
@@ -51,8 +132,6 @@ president <- read.csv(file_path, stringsAsFactors = FALSE)
 ##  The first graph is the raw data with LOESS smoothing curves.
 
 ```{r raw}
-# Convert end_date to Date format
-president$end_date <- as.Date(president$end_date, format = "%m/%d/%y")
 
 # Reshape the data into long format for easier plotting
 president_long <- pivot_longer(president, 
@@ -74,21 +153,62 @@ label_points <- president_long %>%
   })
 
 # Plot
-ggplot(president_long, aes(x = end_date, y = percentage, color = response)) +
-  geom_point(alpha = 0.6) +  # Semi-transparent points
-  geom_smooth(se = TRUE, method = "loess", span = 0.5, linewidth = 1) +  # Trend lines
-  geom_text(data = label_points,
-            aes(x = latest_date, y = smoothed,
-                label = paste0("Latest: ", round(smoothed, 1), "%")),
-            inherit.aes = FALSE,
-            hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
-  scale_color_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "All Polls with 95% Confidence Bands and Latest Labels",
-       x = "Poll End Date",
-       y = "Response (%)",
-       color = "Approval") +
-  theme_minimal() +
-  xlim(min(president_long$end_date), max(president_long$end_date) + 10)
+
+best_span <- cv_optimal_loess_span(president_long)
+
+
+
+# Add best span and numeric date to data
+plot_data <- president_long %>%
+  left_join(best_span, by = "response") %>%
+  mutate(date_num = as.numeric(end_date)) %>%
+  mutate(weight_var = if ("weight" %in% names(.)) weight else sample_size)
+
+# Create smoothed values manually per response group
+smoothed_curves <- plot_data %>%
+  group_by(response) %>%
+  arrange(date_num) %>%
+  nest() %>%
+  left_join(best_span, by = "response") %>%
+  mutate(
+    data = map(data, ~ {
+      df <- .
+      df %>% mutate(weight_var = if ("weight" %in% names(df)) weight else sample_size)
+    }),
+    model = map2(data, best_span, function(df, span_val) {
+      if (is.na(span_val) || length(span_val) != 1) return(NULL)
+      tryCatch(
+        loess(percentage ~ date_num, data = df, weights = df$weight_var, span = span_val),
+        error = function(e) {
+          message("LOESS error: ", e$message)
+          return(NULL)
+        }
+      )
+    }),
+    smoothed = map2(model, data, function(mod, df) {
+      if (is.null(mod)) return(NULL)
+      tibble(
+        end_date = df$end_date,
+        response = df$response[1],
+        smoothed = predict(mod, newdata = df)
+      )
+    })
+  ) %>%
+  filter(!map_lgl(smoothed, is.null)) %>%
+  select(response, smoothed) %>%
+  unnest(smoothed)
+
+
+
+
+ggplot(plot_data, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.4, aes(weight = weight_var)) +
+  geom_line(data = smoothed_curves, aes(y = smoothed)) +
+  labs(title = "Smoothed Support by Response Type",
+       y = "Percentage", x = "End Date", color = "Response") +
+  theme_minimal()
+
+
   
 ```
 
@@ -153,12 +273,15 @@ president_weight_long <- pivot_longer(president_weight,
                                values_to = "percentage")
 
 # Fit separate loess models for "yes" and "no"
+
 yes_data <- filter(president_weight_long, response == "yes")
+best_span <- cv_optimal_loess_span(yes_data)
+print(best_span)
 
 loess_yes <- loess(percentage ~ as.numeric(end_date),
                    data = yes_data,
                    weights = yes_data$weight,
-                   span = 0.5)
+                   span = best_span)
 
 pred_yes <- predict(loess_yes, newdata = data.frame(end_date = as.numeric(yes_data$end_date)),
                     se = TRUE)
@@ -173,11 +296,13 @@ yes_data <- yes_data %>%
 
 # NO model
 no_data <- filter(president_weight_long, response == "no")
+best_span <- cv_optimal_loess_span(no_data)
+print(best_span)
 
 loess_no <- loess(percentage ~ as.numeric(end_date),
                   data = no_data,
                   weights = no_data$weight,
-                  span = 0.5)
+                  span = )
 
 pred_no <- predict(loess_no, newdata = data.frame(end_date = as.numeric(no_data$end_date)),
                    se = TRUE)
@@ -206,6 +331,7 @@ label_points <- loess_all %>%
   ungroup()
 
 # Plot with smoothed loess lines
+
 ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
   geom_point(alpha = 0.3) +
   geom_line(aes(y = fit), size = 1) +
@@ -417,7 +543,7 @@ ggplot(president_smoothed, aes(x = end_date, y = percentage, color = response)) 
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_color_manual(values = c("yes" = "red", "no" = "black")) +
   scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "Sample Size",
+  labs(title = "Weighted for Sample Size",
        x = "Poll End Date",
        y = "Response (%)",
        color = "Response",
@@ -520,7 +646,7 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_color_manual(values = c("yes" = "red", "no" = "black")) +
   scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "Selected Pollsters Weighted for Recency, Sample Size, and Methodology",
+  labs(title = "Weighted for Recency",
        x = "Poll End Date",
        y = "Response (%)",
        color = "Response",

@@ -3,6 +3,10 @@ check_load_pkgs <- function() {
     message("installing the 'tidyverse' package")
     install.packages(tidyverse)
   }
+  if (!require(tinytex)) {
+    message("installing the 'tinytex' package")
+    install.packages(tinytex)
+  }
   if (!require(ggrepel)) {
     message("installing the 'ggrepel' package")
     install.packages(ggrepel)
