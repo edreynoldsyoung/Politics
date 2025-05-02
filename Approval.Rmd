@@ -14,25 +14,63 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-     echo = FALSE,
-     warning = FALSE,
-     message = FALSE,
-     cache = FALSE
+     echo = FALSE,     # Hides code in rendered report
+     warning = FALSE,  # Suppresses warnings
+     message = FALSE,  # Suppresses messages
+     cache = FALSE     # Disables caching
 )
 
-library(here)
-source(here("R", "load_packages.R"))
+library(here)     # Helps manage file paths
+source(here("R", "load_packages.R"))     # Custom script to load additional packages
+
+```
+
+```{r helpers, include=FALSE}
+# Helper function to fit a LOESS curve with optional weights and 95% CIs
+fit_loess <- function(data, span = 0.5, weight_col = NULL) {
+  weights <- if (!is.null(weight_col)) data[[weight_col]] else NULL
+  
+  model <- loess(
+    percentage ~ as.numeric(end_date),
+    data = data,
+    weights = weights,
+    span = span
+  )
+  
+  preds <- predict(model, newdata = data.frame(end_date = as.numeric(data$end_date)), se = TRUE)
+  
+  data %>%
+    mutate(
+      fit = preds$fit,
+      se = preds$se.fit,
+      ci_upper = fit + 1.96 * se,
+      ci_lower = fit - 1.96 * se
+    )
+}
+
+# Define pollsters used by the New York Times
+selected_pollsters <- c(
+  "Ipsos", "American Research Group", 
+  "Beacon Research/Shaw & Company Research", "Gallup", "AtlasIntel",
+  "Hart Research Associates/Public Opinion Strategies", "Quinnipiac University",
+  "Emerson College", "CNN/SSRS", "Cygnal Political", "Public Opinion Strategies",
+  "Marist College", "Marquette Law School", "Pew Research Center"
+)
+
+```
+
+```{r download-data}
 
 # Define the URL and the local file path
 url <- "https://www.nytimes.com/newsgraphics/polls/approval/president.csv"
-data_dir <- "data"
+data_dir <- here("data")
 file_path <- file.path(data_dir, "president.csv")
 
 # Determine whether a download is needed:
 # - Either the file doesn't exist...
 # - Or the file exists but was last modified before today.
-download_needed <- !file.exists(file_path) ||
-  as.Date(file.info(file_path)$mtime) < Sys.Date()
+download_needed <- !file.exists(file_path) || 
+  difftime(Sys.time(), file.info(file_path)$mtime, units = "hours") > 6
 
 if (download_needed) {
   download.file(url, file_path, mode = "wb")
@@ -40,10 +78,40 @@ if (download_needed) {
 } else {
   message("The president.csv file is already up-to-date; no download needed.")
 }
+```
 
-# Read the CSV file into R for use in your RMarkdown
-president <- read.csv(file_path, stringsAsFactors = FALSE)
+```{r read-data}
 
+# Read the downloaded NYT presidential approval data
+president <- readr::read_csv(file_path, show_col_types = FALSE)
+
+# Ensure end_date is parsed correctly (M/D/YY format)
+president$end_date <- lubridate::mdy(president$end_date)
+
+```
+
+```{r date-diagnostic, eval=FALSE, echo=FALSE}
+
+file.info(file_path)$mtime
+
+
+# Check the structure of the dataset
+glimpse(president)
+
+# See the first and last dates in the data
+summary(president$end_date)
+
+# Optional: explicitly check latest date
+latest <- max(president$end_date, na.rm = TRUE)
+cat("Latest date in dataset:", latest, "\n")
+
+# Visual histogram of poll counts by end date
+ggplot(president, aes(x = end_date)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Poll End Dates",
+       x = "End Date",
+       y = "Number of Polls") +
+  theme_minimal()
 ```
 
 # I am using the New York Times Presidential Approval Polls to look at trends over time.  
@@ -51,44 +119,45 @@ president <- read.csv(file_path, stringsAsFactors = FALSE)
 ##  The first graph is the raw data with LOESS smoothing curves.
 
 ```{r raw}
-# Convert end_date to Date format
-president$end_date <- as.Date(president$end_date, format = "%m/%d/%y")
 
 # Reshape the data into long format for easier plotting
 president_long <- pivot_longer(president, 
                                cols = c("yes", "no"), 
                                names_to = "response", 
                                values_to = "percentage")
-label_points <- president_long %>%
-  group_split(response) %>%
-  map_df(function(df) {
-    latest_date <- max(df$end_date, na.rm = TRUE)
-    model <- loess(percentage ~ as.numeric(end_date), data = df, span = 0.5)
-    smoothed <- predict(model, newdata = data.frame(end_date = as.numeric(latest_date)))
-    
-    tibble(
-      response = unique(df$response),
-      latest_date = latest_date,
-      smoothed = smoothed
-    )
-  })
 
-# Plot
-ggplot(president_long, aes(x = end_date, y = percentage, color = response)) +
-  geom_point(alpha = 0.6) +  # Semi-transparent points
-  geom_smooth(se = TRUE, method = "loess", span = 0.5, linewidth = 1) +  # Trend lines
+# Apply LOESS smoothing
+loess_all <- bind_rows(
+  fit_loess(filter(president_long, response == "yes"), span = 0.5),
+  fit_loess(filter(president_long, response == "no"), span = 0.5)
+)
+
+# Identify latest points for labels
+label_points <- loess_all %>%
+  group_by(response) %>%
+  filter(end_date == max(end_date, na.rm = TRUE)) %>%
+  ungroup()
+
+# Plot with raw data and LOESS trend lines
+ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.6) +
+  geom_line(aes(y = fit), linewidth = 1) +
+  geom_ribbon(aes(ymin = ci_upper, ymax = ci_upper, fill = response),
+              alpha = 0.2, color = NA) +
   geom_text(data = label_points,
-            aes(x = latest_date, y = smoothed,
-                label = paste0("Latest: ", round(smoothed, 1), "%")),
-            inherit.aes = FALSE,
+            aes(label = paste0("Latest: ", round(fit, 1), "%")),
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_color_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "All Polls with 95% Confidence Bands and Latest Labels",
-       x = "Poll End Date",
-       y = "Response (%)",
-       color = "Approval") +
+  scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
+  labs(
+    title = "All Polls with LOESS Smoothing (Fixed Span)",
+    x = "Poll End Date",
+    y = "Response (%)",
+    color = "Response",
+    fill = "Response"
+  ) +
   theme_minimal() +
-  xlim(min(president_long$end_date), max(president_long$end_date) + 10)
+  xlim(min(loess_all$end_date), max(loess_all$end_date) + 10)
   
 ```
 
@@ -109,41 +178,20 @@ $$
 # Define reference date as most recent date in the dataset
 latest_date <- max(president$end_date, na.rm = TRUE)
 
-# Calculate days since latest poll (for time decay)
+# Apply filters and compute weight
 president_weight <- president %>%
-  filter(pollster %in% c("Ipsos", 
-                           "American Research Group", 
-                           "Beacon Research/Shaw & Company Research",
-                           "Gallup",
-                           "AtlasIntel",
-                           "Hart Research Associates/Public Opinion Strategies",
-                           "Quinnipiac University",
-                           "Emerson College",
-                           "CNN/SSRS",
-                           "Cygnal Political",
-                           "Public Opinion Strategies",
-                           "Marist College",
-                           "Marquette Law School",
-                           "Pew Research Center")) %>%
+  filter(pollster %in% selected_pollsters) %>%
   mutate(
     days_ago = as.numeric(latest_date - end_date),
-    
-    # Time decay: exponential decay with half-life of 14 days
-    time_weight = exp(-log(2) * days_ago / 14),
-    
-    # Sample size weight: log-scaled and normalized
-    size_weight = log1p(sample_size),
+    time_weight = exp(-log(2) * days_ago / 14), # Time decay: exponential decay with half-life of 14 days
+    size_weight = log1p(sample_size), # Sample size weight: log-scaled and normalized
     size_weight = size_weight / max(size_weight, na.rm = TRUE),
-    
-    # Methodology weight: +1 if Probability Sample, else 0
     is_prob_panel = grepl("Probability Panel", methodology, ignore.case = TRUE) &
                     !grepl("Nonprobability Panel", methodology, ignore.case = TRUE),
-    method_weight = ifelse(is_prob_panel, 1, 0),
-    
-    # Final composite weight (can be tuned)
+    method_weight = ifelse(is_prob_panel, 1, 0), # Methodology weight: +1 if Probability Sample, else 0
     weight = (0.5 * time_weight) + 
              (0.3 * size_weight) + 
-             (0.2 * method_weight)
+             (0.2 * method_weight) # Final composite weight (can be tuned)
   )
 
 # Reshape to long format
@@ -152,53 +200,44 @@ president_weight_long <- pivot_longer(president_weight,
                                names_to = "response", 
                                values_to = "percentage")
 
-# Fit separate loess models for "yes" and "no"
-yes_data <- filter(president_weight_long, response == "yes")
-
-loess_yes <- loess(percentage ~ as.numeric(end_date),
-                   data = yes_data,
-                   weights = yes_data$weight,
-                   span = 0.5)
-
-pred_yes <- predict(loess_yes, newdata = data.frame(end_date = as.numeric(yes_data$end_date)),
-                    se = TRUE)
-
-yes_data <- yes_data %>%
-  mutate(
-    fit = pred_yes$fit,
-    se = pred_yes$se.fit,
-    ci_upper = fit + 1.96 * se,
-    ci_lower = fit - 1.96 * se
+# Helper function to fit LOESS and compute 95% confidence intervals
+fit_loess <- function(data, span = 0.5, weight_col = NULL) {
+  weights <- if (!is.null(weight_col)) data[[weight_col]] else NULL
+  
+  model <- loess(
+    percentage ~ as.numeric(end_date),
+    data = data,
+    weights = weights,
+    span = span
   )
+  
+  preds <- predict(model, newdata = data.frame(end_date = as.numeric(data$end_date)), se = TRUE)
+  
+  data %>%
+    mutate(
+      fit = preds$fit,
+      se = preds$se.fit,
+      ci_upper = fit + 1.96 * se,
+      ci_lower = fit - 1.96 * se
+    )
+}
 
-# NO model
-no_data <- filter(president_weight_long, response == "no")
 
-loess_no <- loess(percentage ~ as.numeric(end_date),
-                  data = no_data,
-                  weights = no_data$weight,
-                  span = 0.5)
+# Fit LOESS models for each response group using composite weights
+yes_data <- fit_loess(
+  filter(president_weight_long, response == "yes"),
+  span = 0.5,
+  weight_col = "weight"
+)
 
-pred_no <- predict(loess_no, newdata = data.frame(end_date = as.numeric(no_data$end_date)),
-                   se = TRUE)
-
-no_data <- no_data %>%
-  mutate(
-    fit = pred_no$fit,
-    se = pred_no$se.fit,
-    ci_upper = fit + 1.96 * se,
-    ci_lower = fit - 1.96 * se
-  )
+no_data <- fit_loess(
+  filter(president_weight_long, response == "no"),
+  span = 0.5,
+  weight_col = "weight"
+)
 
 # Combine for plotting
 loess_all <- bind_rows(yes_data, no_data)
-
-# Predict fitted values for plotting
-president_weight_long <- president_weight_long %>%
-  mutate(smoothed = case_when(
-    response == "yes" ~ predict(loess_yes, newdata = data.frame(end_date = as.numeric(end_date))),
-    response == "no"  ~ predict(loess_no, newdata = data.frame(end_date = as.numeric(end_date)))
-  ))
 
 label_points <- loess_all %>%
   group_by(response) %>%
@@ -211,10 +250,6 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
   geom_line(aes(y = fit), size = 1) +
   geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), 
               alpha = 0.2, color = NA) +
-  scale_color_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
-  scale_fill_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
-  labs(title = "Weighted LOESS Smoothed Polling Trends with 95% Confidence Intervals",
-       x = "Poll End Date", y = "Response (%)") +
   geom_text(data = label_points, 
             aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
@@ -247,286 +282,185 @@ president_long <- pivot_longer(president_prob,
                                names_to = "response", 
                                values_to = "percentage")
 
-label_points <- president_long %>%
-  group_split(response) %>%
-  map_df(function(df) {
-    latest_date <- max(df$end_date, na.rm = TRUE)
-    model <- loess(percentage ~ as.numeric(end_date), data = df, span = 0.5)
-    smoothed <- predict(model, newdata = data.frame(end_date = as.numeric(latest_date)))
-    
-    tibble(
-      response = unique(df$response),
-      latest_date = latest_date,
-      smoothed = smoothed
-    )
-  })
+# Fit LOESS models using your helper
+loess_all <- bind_rows(
+  fit_loess(filter(president_long, response == "yes"), span = 0.5),
+  fit_loess(filter(president_long, response == "no"), span = 0.5)
+)
+
+# Identify label points
+label_points <- loess_all %>%
+  group_by(response) %>%
+  filter(end_date == max(end_date, na.rm = TRUE)) %>%
+  ungroup()
 
 # Plot with trend lines
-ggplot(president_long, aes(x = end_date, y = percentage, color = response)) +
+ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
   geom_point(alpha = 0.6) +
-  geom_smooth(method = "loess", span = 0.5, se = TRUE, linewidth = 1) +
+  geom_line(aes(y = fit), linewidth = 1) +
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
   geom_text(data = label_points,
-            aes(x = latest_date, y = smoothed,
-                label = paste0("Latest: ", round(smoothed, 1), "%")),
-            inherit.aes = FALSE,
+            aes(label = paste0("Latest: ", round(fit, 1), "%")),
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_color_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "Probability Panel Polls",
-       x = "Poll End Date",
-       y = "Response (%)",
-       color = "Response") +
+  scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
+  labs(
+    title = "Probability Panel Polls Only",
+    x = "Poll End Date",
+    y = "Response (%)",
+    color = "Response",
+    fill = "Response"
+  ) +
   theme_minimal() +
-  xlim(min(president_long$end_date), max(president_long$end_date) + 10)
+  xlim(min(loess_all$end_date), max(loess_all$end_date) + 10)
 
 ```
 
 ## This is a graph using only selected pollsters
 
 ```{r selected}
-# Convert end_date to Date format
-president$end_date <- as.Date(president$end_date, format = "%m/%d/%y")
 
 # Reshape the data into long format for easier plotting
 president_long <- president %>%
-  filter(pollster %in% c("Ipsos", 
-                        "American Research Group", 
-                        "Beacon Research/Shaw & Company Research",
-                        "Gallup",
-                        "AtlasIntel",
-                        "Hart Research Associates/Public Opinion Strategies",
-                        "Quinnipiac University",
-                        "Emerson College",
-                        "CNN/SSRS",
-                        "Cygnal Political",
-                        "Public Opinion Strategies",
-                        "Marist College",
-                        "Marquette Law School",
-                        "Pew Research Center")) %>%
+  filter(pollster %in% selected_pollsters) %>%
   pivot_longer(cols = c("yes", "no"), 
                names_to = "response", 
                values_to = "percentage")
 
-label_points <- president_long %>%
-  group_split(response) %>%
-  map_df(function(df) {
-    latest_date <- max(df$end_date, na.rm = TRUE)
-    model <- loess(percentage ~ as.numeric(end_date), data = df, span = 0.5)
-    smoothed <- predict(model, newdata = data.frame(end_date = as.numeric(latest_date)))
-    
-    tibble(
-      response = unique(df$response),
-      latest_date = latest_date,
-      smoothed = smoothed
-    )
-  })
-
-# Plot
-ggplot(president_long, aes(x = end_date, y = percentage, color = response)) +
-  geom_point(alpha = 0.6) +  # Semi-transparent points
-  geom_smooth(se = TRUE, method = "loess", span = 0.5, linewidth = 1) +  # Trend lines
-  geom_text(data = label_points,
-            aes(x = latest_date, y = smoothed,
-                label = paste0("Latest: ", round(smoothed, 1), "%")),
-            inherit.aes = FALSE,
-            hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
-  scale_color_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "Selected Pollsters",
-       x = "Poll End Date",
-       y = "Response (%)",
-       color = "Approval") +
-  theme_minimal() +
-  xlim(min(president_long$end_date), max(president_long$end_date) + 10)
-```
-
-## This a graph weighted only by sample size
-
-```{r Sample Size Diagnostic}
-
-president_size <- president %>%
-  mutate(
-    # Sample size weight: log-scaled and normalized
-    size_weight = log1p(sample_size),
-    size_weight = size_weight / max(size_weight, na.rm = TRUE),
-  )
-
-
-# Reshape to long format
-president_size_long <- pivot_longer(president_size, 
-                               cols = c("yes", "no"), 
-                               names_to = "response", 
-                               values_to = "percentage")
-
-# Fit separate loess models for "yes" and "no"
-yes_data <- filter(president_size_long, response == "yes")
-
-loess_yes <- loess(percentage ~ as.numeric(end_date), 
-                   data = yes_data, 
-                   weights = yes_data$size_weight,
-                   span = 0.5)
-
-pred_yes <- predict(loess_yes, newdata = data.frame(end_date = as.numeric(yes_data$end_date)), se = TRUE)
-
-yes_data <- yes_data %>%
-  mutate(
-    smoothed = pred_yes$fit,
-    se = pred_yes$se.fit,
-    ci_upper = smoothed + 1.96 * se,
-    ci_lower = smoothed - 1.96 * se
-  )
-
-no_data <- filter(president_size_long, response == "no")
-
-loess_no <- loess(percentage ~ as.numeric(end_date), 
-                  data = no_data, 
-                  weights = no_data$size_weight,
-                  span = 0.5)
-
-pred_no <- predict(loess_no, newdata = data.frame(end_date = as.numeric(no_data$end_date)), se = TRUE)
-
-no_data <- no_data %>%
-  mutate(
-    smoothed = pred_no$fit,
-    se = pred_no$se.fit,
-    ci_upper = smoothed + 1.96 * se,
-    ci_lower = smoothed - 1.96 * se
-  )
-
-
-# Predict fitted values for plotting
-president_smoothed <- bind_rows(yes_data, no_data)
-
-label_points <- president_smoothed %>%
-  group_by(response) %>%
-  filter(end_date == max(end_date, na.rm = TRUE)) %>%
-  ungroup()
-
-# Plot with smoothed loess lines
-ggplot(president_smoothed, aes(x = end_date, y = percentage, color = response)) +
-  geom_point(alpha = 0.4) +
-  geom_line(aes(y = smoothed), linewidth = 1) +
-  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
-  scale_color_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
-  scale_fill_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
-  labs(title = "Sample Size",
-       x = "Poll End Date",
-       y = "Response (%)",
-       color = "Response",
-       fill = "Response") + 
-  geom_text(data = label_points, 
-            aes(x = end_date, y = smoothed, label = paste0("Latest: ", round(smoothed, 1), "%")),
-            hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
-  scale_color_manual(values = c("yes" = "red", "no" = "black")) +
-  scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "Sample Size",
-       x = "Poll End Date",
-       y = "Response (%)",
-       color = "Response",
-       fill = "Response") +
-  theme_minimal() +
-  xlim(min(president_smoothed$end_date), max(president_smoothed$end_date) + 10)  # give labels some space
-```
-
-## Polls weighted only for recency
-
-```{r recency}
-
-# Create a weighting column
-# Define reference date as most recent date in the dataset
-latest_date <- max(president$end_date, na.rm = TRUE)
-
-# Calculate days since latest poll (for time decay)
-president_recency <- president %>%
-  mutate(
-    days_ago = as.numeric(latest_date - end_date),
-    
-    # Time decay: exponential decay with half-life of 14 days
-    time_weight = exp(-log(2) * days_ago / 14),
-    
-    # Final composite weight (can be tuned)
-    weight = 0.5 * time_weight
-  )
-
-# Reshape to long format
-president_recency_long <- pivot_longer(president_recency, 
-                               cols = c("yes", "no"), 
-                               names_to = "response", 
-                               values_to = "percentage")
-
-# Fit separate loess models for "yes" and "no"
-yes_data <- filter(president_recency_long, response == "yes")
-
-loess_yes <- loess(percentage ~ as.numeric(end_date),
-                   data = yes_data,
-                   weights = yes_data$weight,
-                   span = 0.5)
-
-pred_yes <- predict(loess_yes, newdata = data.frame(end_date = as.numeric(yes_data$end_date)),
-                    se = TRUE)
-
-yes_data <- yes_data %>%
-  mutate(
-    fit = pred_yes$fit,
-    se = pred_yes$se.fit,
-    ci_upper = fit + 1.96 * se,
-    ci_lower = fit - 1.96 * se
-  )
-
-# NO model
-no_data <- filter(president_recency_long, response == "no")
-
-loess_no <- loess(percentage ~ as.numeric(end_date),
-                  data = no_data,
-                  weights = no_data$weight,
-                  span = 0.5)
-
-pred_no <- predict(loess_no, newdata = data.frame(end_date = as.numeric(no_data$end_date)),
-                   se = TRUE)
-
-no_data <- no_data %>%
-  mutate(
-    fit = pred_no$fit,
-    se = pred_no$se.fit,
-    ci_upper = fit + 1.96 * se,
-    ci_lower = fit - 1.96 * se
-  )
-
-# Combine for plotting
-loess_all <- bind_rows(yes_data, no_data)
-
-# Predict fitted values for plotting
-president_recency_long <- president_recency_long %>%
-  mutate(smoothed = case_when(
-    response == "yes" ~ predict(loess_yes, newdata = data.frame(end_date = as.numeric(end_date))),
-    response == "no"  ~ predict(loess_no, newdata = data.frame(end_date = as.numeric(end_date)))
-  ))
+loess_all <- bind_rows(
+  fit_loess(filter(president_long, response == "yes"), span = 0.5),
+  fit_loess(filter(president_long, response == "no"), span = 0.5)
+)
 
 label_points <- loess_all %>%
   group_by(response) %>%
   filter(end_date == max(end_date, na.rm = TRUE)) %>%
   ungroup()
 
-# Plot with smoothed loess lines
+# Plot
 ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
-  geom_point(alpha = 0.3) +
-  geom_line(aes(y = fit), size = 1) +
-  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), 
+  geom_point(alpha = 0.6) +
+  geom_line(aes(y = fit), linewidth = 1) +
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response),
               alpha = 0.2, color = NA) +
-  scale_color_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
-  scale_fill_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
-  labs(title = "Weighted for Recency",
-       x = "Poll End Date", y = "Response (%)") +
-  geom_text(data = label_points, 
-            aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+  geom_text(data = label_points,
+            aes(label = paste0("Latest: ", round(fit, 1), "%")),
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_color_manual(values = c("yes" = "red", "no" = "black")) +
   scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
-  labs(title = "Selected Pollsters Weighted for Recency, Sample Size, and Methodology",
-       x = "Poll End Date",
-       y = "Response (%)",
-       color = "Response",
-       fill = "Response") +
+  labs(
+    title = "Selected Pollsters Only",
+    x = "Poll End Date",
+    y = "Response (%)",
+    color = "Response",
+    fill = "Response"
+  ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 10)  # give labels some space
+  xlim(min(loess_all$end_date), max(loess_all$end_date) + 10)
+
+```
+
+## This a graph weighted only by sample size
+
+```{r Sample Size Diagnostic}
+
+# Compute log-scaled, normalized sample size weight
+president_size <- president %>%
+  mutate(
+    size_weight = log1p(sample_size),
+    size_weight = size_weight / max(size_weight, na.rm = TRUE)
+  )
+
+# Reshape to long format
+president_size_long <- pivot_longer(president_size, 
+                                    cols = c("yes", "no"), 
+                                    names_to = "response", 
+                                    values_to = "percentage")
+
+# Fit LOESS models using sample size as weight
+loess_all <- bind_rows(
+  fit_loess(filter(president_size_long, response == "yes"), span = 0.5, weight_col = "size_weight"),
+  fit_loess(filter(president_size_long, response == "no"),  span = 0.5, weight_col = "size_weight")
+)
+
+# Label points for latest date
+label_points <- loess_all %>%
+  group_by(response) %>%
+  filter(end_date == max(end_date, na.rm = TRUE)) %>%
+  ungroup()
+
+# Plot
+ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.4) +
+  geom_line(aes(y = fit), linewidth = 1) +
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
+  geom_text(data = label_points,
+            aes(label = paste0("Latest: ", round(fit, 1), "%")),
+            hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
+  scale_color_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
+  scale_fill_manual(values = c("yes" = "red", "no" = "black"), drop = FALSE) +
+  labs(
+    title = "LOESS Smoothing Weighted by Sample Size Only",
+    x = "Poll End Date",
+    y = "Response (%)",
+    color = "Response",
+    fill = "Response"
+  ) +
+  theme_minimal() +
+  xlim(min(loess_all$end_date), max(loess_all$end_date) + 10)
+
+```
+
+## Polls weighted only for recency
+
+```{r recency}
+# Compute time decay weight (half-life = 14 days)
+latest_date <- max(president$end_date, na.rm = TRUE)
+
+president_recency <- president %>%
+  mutate(
+    days_ago = as.numeric(latest_date - end_date),
+    time_weight = exp(-log(2) * days_ago / 14)
+  )
+
+# Reshape to long format
+president_recency_long <- pivot_longer(president_recency,
+                                       cols = c("yes", "no"),
+                                       names_to = "response",
+                                       values_to = "percentage")
+
+# Fit LOESS using recency weight
+loess_all <- bind_rows(
+  fit_loess(filter(president_recency_long, response == "yes"), span = 0.5, weight_col = "time_weight"),
+  fit_loess(filter(president_recency_long, response == "no"),  span = 0.5, weight_col = "time_weight")
+)
+
+# Label latest points
+label_points <- loess_all %>%
+  group_by(response) %>%
+  filter(end_date == max(end_date, na.rm = TRUE)) %>%
+  ungroup()
+
+# Plot
+ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.3) +
+  geom_line(aes(y = fit), size = 1) +
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
+  geom_text(data = label_points,
+            aes(label = paste0("Latest: ", round(fit, 1), "%")),
+            hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
+  scale_color_manual(values = c("yes" = "red", "no" = "black")) +
+  scale_fill_manual(values = c("yes" = "red", "no" = "black")) +
+  labs(
+    title = "LOESS Smoothing Weighted for Recency Only",
+    x = "Poll End Date",
+    y = "Response (%)",
+    color = "Response",
+    fill = "Response"
+  ) +
+  theme_minimal() +
+  xlim(min(loess_all$end_date), max(loess_all$end_date) + 10)
+
 ```
 
 ##  Plot weight vs. end_date to see how time decay is working:
@@ -552,5 +486,13 @@ ggplot(president_weight_long, aes(x = end_date, y = value, color = component)) +
   labs(title = "Average Contribution of Weight Components Over Time",
        x = "Poll End Date", y = "Component Value",
        color = "Component") +
+  theme_minimal()
+
+# Visual histogram of poll counts by end date
+ggplot(president_weight_long, aes(x = end_date)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Poll End Dates",
+       x = "End Date",
+       y = "Number of Polls") +
   theme_minimal()
 ```

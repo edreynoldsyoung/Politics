@@ -1,53 +1,35 @@
-check_load_pkgs <- function() {
-  if (!require(tidyverse)) {
-    message("installing the 'tidyverse' package")
-    install.packages(tidyverse)
+# load_packages.R
+
+# List of required packages
+packages <- c("tidyverse", 
+              "tinytex", 
+              "ggrepel", 
+              "lubridate", 
+              "RSocrata", 
+              "knitr",
+              "sf", 
+              "tigris", 
+              "usmap", 
+              "tidycensus", 
+              "scales", 
+              "viridis", 
+              "ggridges"
+)
+
+# Function to install and load required packages
+check_and_load_packages <- function(pkg_list) {
+  for (pkg in pkg_list) {
+    if (!require(pkg, character.only = TRUE)) {
+      message(sprintf("Installing '%s'...", pkg))
+      install.packages(pkg)
+      library(pkg, character.only = TRUE)
+    }
   }
-  if (!require(ggrepel)) {
-    message("installing the 'ggrepel' package")
-    install.packages(ggrepel)
-  }
-  if (!require(lubridate)) {
-    message("installing the 'lubridate' package")
-    install.packages(lubridate)
-  }
-  if (!require(RSocrata)) {
-    message("installing the 'RSocrata' package")
-    install.packages(RSocrata)
-  }
-  if (!require(knitr)) {
-    message("installing the 'knitr' package")
-    install.packages(knitr)
-  }
-  if (!require(sf)) {
-    message("installing the 'sf' package")
-    install.packages(sf)
-  }
-  if (!require(tigris)) {
-    message("installing the 'tigris' package")
-    install.packages(tigris)
-  }
-  if (!require(usmap)) {
-    message("installing the 'usmap' package")
-    install.packages(usmap)
-  }
-  if (!require(tidycensus)) {
-    message("installing the 'tidycensus' package")
-    install.packages(tidycensus)
-  }
-  if (!require(scales)) {
-    message("installing the 'scales' package")
-    install.packages(scales)
-  }
-  if (!require(viridis)) {
-    message("installing the 'viridis' package")
-    install.packages(viridis)
-  }
-  if (!require(ggridges)) {
-    message("installing the 'ggridges' package")
-    install.packages(ggridges)
-  }  
 }
-check_load_pkgs()
+
+# Run the function
+check_and_load_packages(packages)
+
+# Options for `tigris` package
 options(tigris_class = "sf")
 options(tigris_use_cache = TRUE)
