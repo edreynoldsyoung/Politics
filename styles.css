@@ -3,11 +3,12 @@ html {
 }
 
 body {
+    line-height: 1.6;
     width: 87.5%;
-    margin-left: 10px;
-    margin-right: auto;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    background-color: Linen;
+    max-width: 900px;
+    margin: 0 auto;
+    font-family: "Source Serif Pro", Georgia, serif;
+    background-color: #f4f4f4;
     color: #111;
 }
 
@@ -92,11 +93,31 @@ ol.a {
 }
 
 #math {
-    margin-left: 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+  display: block;
+  padding: 0.5em;
+  margin: 1em 0;
+  font-size: 12px;
+  font-family: 'Cambria Math', 'STIX Two Math', serif;
+  background-color: #f9f9f9;
+  border: 1px solid #ccc;
 }
+
+div.math.display {
+  background-color: #f9f9f9;
+  border: 1px solid #ccc;
+  padding: 1em;
+  margin: 1em 0;
+  overflow-x: auto;
+  font-size: 16px;
+  text-align: left;
+}
+
 
 p:not(#math) {
     margin-left: 50px;
+    margin-bottom: 1.1em;
 }
 
 .title {
@@ -151,4 +172,38 @@ pre:not(.r) {
 img {
     margin-left: 50px;
     max-width: 672px;
+}
+
+.caption {
+  font-size: 0.9em;
+  color: #555;
+  text-align: center;
+  margin-top: 0.5em;
+}
+
+.plot-frame {
+  display: flex;
+  justify-content: center;  /* centers the image horizontally */
+  border: 1px solid #999;
+  padding: 10px;
+  margin: 1em auto;
+  background-color: #fdfdfd;
+  max-width: 100%;
+}
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .plot-frame {
+    border: none;
+    background: none;
+  }
+
+  a {
+    color: black;
+    text-decoration: none;
+  }
 }
