@@ -366,6 +366,94 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
 
 ```
 
+## This is a graph using only polls of likely voters
+
+```{r Likely Voters}
+# --- Filter to only Probability Panel
+president_lv <- president %>%
+  filter(population == "lv"  )
+
+# --- Reshape to long format for LOESS modeling
+president_long <- pivot_longer(president_lv, 
+                               cols = c("yes", "no"), 
+                               names_to = "response", 
+                               values_to = "percentage")
+
+# --- Fit LOESS models (fixed span, no weights)
+loess_all <- bind_rows(
+  fit_loess(filter(president_long, response == "yes"), span = 0.5),
+  fit_loess(filter(president_long, response == "no"), span = 0.5)
+)
+
+# --- Extract label point for latest smoothed value
+label_points <- get_latest_label_point(loess_all)
+
+# --- Plot with LOESS smoothing and confidence ribbon
+ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.6) +
+  geom_line(aes(y = fit), linewidth = 1) +
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
+  geom_text(data = label_points,
+          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
+  scale_fill_manual(values = approval_fills) +
+  scale_color_manual(values = approval_strokes) +
+  labs(
+    title = "Polls of Likely Voters Only",
+    x = "Poll End Date",
+    y = "Response (%)",
+    color = "Response",
+    fill = "Response"
+  ) +
+  theme_minimal() +
+  xlim(min(loess_all$end_date), max(loess_all$end_date) + 15)
+
+```
+
+## This is a graph of polls of recent voters only
+
+```{r recent Voters}
+# --- Filter to only Probability Panel
+president_lv <- president %>%
+  filter(population == "rv"  )
+
+# --- Reshape to long format for LOESS modeling
+president_long <- pivot_longer(president_lv, 
+                               cols = c("yes", "no"), 
+                               names_to = "response", 
+                               values_to = "percentage")
+
+# --- Fit LOESS models (fixed span, no weights)
+loess_all <- bind_rows(
+  fit_loess(filter(president_long, response == "yes"), span = 0.5),
+  fit_loess(filter(president_long, response == "no"), span = 0.5)
+)
+
+# --- Extract label point for latest smoothed value
+label_points <- get_latest_label_point(loess_all)
+
+# --- Plot with LOESS smoothing and confidence ribbon
+ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
+  geom_point(alpha = 0.6) +
+  geom_line(aes(y = fit), linewidth = 1) +
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
+  geom_text(data = label_points,
+          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
+  scale_fill_manual(values = approval_fills) +
+  scale_color_manual(values = approval_strokes) +
+  labs(
+    title = "Polls of Recent Voters Only",
+    x = "Poll End Date",
+    y = "Response (%)",
+    color = "Response",
+    fill = "Response"
+  ) +
+  theme_minimal() +
+  xlim(min(loess_all$end_date), max(loess_all$end_date) + 15)
+
+```
+
 ## This is a graph using only selected pollsters
 
 ```{r selected}
