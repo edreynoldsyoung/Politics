@@ -76,12 +76,21 @@ get_latest_label_point <- function(loess_data) {
 
 # Define pollsters used by the New York Times
 
-selected_pollsters <- c(
-  "Ipsos", "American Research Group", 
-  "Beacon Research/Shaw & Company Research", "Gallup", "AtlasIntel",
-  "Hart Research Associates/Public Opinion Strategies", "Quinnipiac University",
-  "Emerson College", "CNN/SSRS", "Cygnal Political", "Public Opinion Strategies",
-  "Marist College", "Marquette Law School", "Pew Research Center"
+selected_pollsters <- c("Ipsos", 
+                        "American Research Group",
+                        "Beacon Research/Shaw & Company Research", 
+                        "Gallup", 
+                        "AtlasIntel",
+                        "Hart Research Associates/Public Opinion Strategies", 
+                        "Quinnipiac University",
+                        "Emerson College", 
+                        "CNN/SSRS", 
+                        "Cygnal Political", 
+                        "Public Opinion Strategies",
+                        "Marist College", 
+                        "Marquette Law School", 
+                        "Pew Research Center",
+                        "AP-NORC"
 )
 
 # --- Define consistent color palette for plots
@@ -128,6 +137,16 @@ president <- readr::read_csv(file_path, show_col_types = FALSE)
 # --- Convert end_date to Date format
 president$end_date <- lubridate::mdy(president$end_date)
 
+# Filter to probability samples that are *not* in the selected pollster list
+prob_not_selected <- president %>%
+  filter(
+     (grepl("Probability Panel", methodology, ignore.case = TRUE) & !grepl("Nonprobability Panel", methodology, ignore.case = TRUE)),
+    !pollster %in% selected_pollsters
+  ) %>%
+  distinct(pollster)
+
+# View the result
+prob_not_selected
 ```
 
 ```{r date-diagnostic, eval=FALSE, echo=FALSE}
@@ -216,17 +235,17 @@ ggplot() +
   
 ```
 
-##  This second graph uses the same data, but, following the New York Times, I only include the following selected pollsters: Ipsos, American Research Group, Beacon Research/Shaw & Company Research, Gallup, AtlasIntel, Hart Research Associates/Public Opinion Strategies, Quinnipiac University, Emerson College, CNN/SSRS, Cygnal Political, Public Opinion Strategies, Marist College, Marquette Law School, Pew Research Center.  In addition, the data is weighted for recency, sample size and Probability Panel methodology. 
+##  This second graph uses the same data, but weighted for recency, sample size, Probability Panel methodology, and the use of selected pollsters. Following the New York Times, the selected pollsters are: Ipsos, American Research Group, Beacon Research/Shaw & Company Research, Gallup, AtlasIntel, Hart Research Associates/Public Opinion Strategies, Quinnipiac University, Emerson College, CNN/SSRS, Cygnal Political, Public Opinion Strategies, Marist College, Marquette Law School, Pew Research Center.  The weighting calculation is:
 
 ### Weights
 \[
-\text{Weight}_i =
-0.3 \cdot e^{-\log(2) \cdot \frac{\text{days ago}_i}{14}} 
-+ 0.3 \cdot \frac{\log(1 + \text{sample size}_i)}{\max_j \log(1 + \text{sample size}_j)} 
-+ 0.2 \cdot \mathbb{1}_{\{\text{methodology}_i = \text{``Probability Panel''}\}} 
+\begin{aligned}
+\text{Weight}_i =\; & 0.3 \cdot e^{-\log(2) \cdot \frac{\text{days ago}_i}{14}} 
++ 0.3 \cdot \frac{\log(1 + \text{sample size}_i)}{\max_j \log(1 + \text{sample size}_j)} \\
+& + 0.2 \cdot \mathbb{1}_{\{\text{methodology}_i = \text{``Probability Panel''}\}} 
 + 0.2 \cdot \mathbb{1}_{\{\text{pollster}_i \in \text{Selected Pollsters}\}}
+\end{aligned}
 \]
-
 
 ```{r weighted}
 
@@ -499,17 +518,6 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 15)
 
-```
-
-##  Plot weight vs. end_date to see how time decay is working:
-
-```{r Time Decau Diagnostic}
-ggplot(president_weight, aes(x = end_date, y = weight)) +
-  geom_point(alpha = 0.7) +
-  labs(title = "Poll Weights Over Time",
-       x = "Poll End Date",
-       y = "Computed Weight") +
-  theme_minimal()
 ```
 
 ##  break down the contributions of time, sample size, and methodology to the final weight
