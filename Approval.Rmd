@@ -16,20 +16,21 @@ output:
 knitr::opts_chunk$set(
   echo = FALSE,
   warning = FALSE,
-  message = FALSE,
-  cache = FALSE
+  message = FALSE
 )
+
+.old_plot_hook <- knitr::knit_hooks$get("plot")
+
+knitr::knit_hooks$set(plot = function(x, options) {
+  out <- .old_plot_hook(x, options)
+  if (knitr::is_html_output()) {
+    out <- paste0('<div class="plot-frame">\n', out, '\n</div>')
+  }
+  out
+})
 
 library(here)
 source(here("R", "load_packages.R"))
-
-# --- Automatically wrap plots in styled div
-knitr::knit_hooks$set(plot = function(x, options) {
-  paste0('<div class="plot-frame">\n',
-         knitr::hook_plot_md(x, options),
-         '\n</div>')
-})
-
 
 ```
 
@@ -58,6 +59,7 @@ fit_loess <- function(data, span = 0.5, weight_col = NULL) {
     response = data$response,
     percentage = data$percentage,
     size_weight = data$size_weight,
+    sample_size = data$sample_size,
     fit = preds$fit,
     se = preds$se.fit,
     ci_upper = preds$fit + 1.96 * preds$se.fit,
@@ -210,7 +212,7 @@ ggplot() +
   # Points and lines, also from loess_all
   geom_point(
     data = loess_all,
-    aes(x = end_date, y = percentage, color = response, size = size_weight),
+    aes(x = end_date, y = percentage, color = response, size = sample_size),
     alpha = 0.1
   ) +
   geom_line(
@@ -231,7 +233,8 @@ ggplot() +
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
@@ -307,7 +310,7 @@ label_points <- get_latest_label_point(loess_all)
 # --- Plot with LOESS smoothing and confidence ribbon
 ggplot() +
   geom_point(data = loess_all,
-             aes(x = end_date, y = percentage, color = response, size = size_weight), 
+             aes(x = end_date, y = percentage, color = response, size = sample_size), 
              alpha = 0.1) +
   geom_line(data = loess_all,
             aes(x = end_date, y = fit, color = response), 
@@ -321,12 +324,18 @@ ggplot() +
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
+  guides(
+  color = guide_legend(order = 1),
+  fill  = guide_legend(order = 1),
+  size  = guide_legend(order = 2)
+  ) +
   labs(
     title = "All Pollsters Weighted by Recency, Sample Size, Method, Selected Pollsters, and Recent Voter Polls",
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
@@ -367,7 +376,7 @@ label_points <- get_latest_label_point(loess_all)
 # --- Plot with LOESS smoothing and confidence ribbon
 ggplot() +
   geom_point(data = loess_all,
-             aes(x = end_date, y = percentage, color = response, size = size_weight), alpha = 0.1) +
+             aes(x = end_date, y = percentage, color = response, size = sample_size), alpha = 0.1) +
   geom_line(data = loess_all,
             aes(x = end_date, y = fit, color = response), linewidth = 1) +
   geom_ribbon(data = loess_all,
@@ -377,12 +386,18 @@ ggplot() +
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
+  guides(
+  color = guide_legend(order = 1),
+  fill  = guide_legend(order = 1),
+  size  = guide_legend(order = 2)
+  ) +
   labs(
     title = "Probability Panel Polls Only",
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
@@ -418,7 +433,7 @@ label_points <- get_latest_label_point(loess_all)
 # --- Plot with LOESS smoothing and confidence ribbon
 ggplot() +
   geom_point(data = loess_all,
-             aes(x = end_date, y = percentage, color = response, size = size_weight),
+             aes(x = end_date, y = percentage, color = response, size = sample_size),
              alpha = 0.1) +
   geom_line(data = loess_all,
             aes(x = end_date, y = fit, color = response), 
@@ -432,12 +447,18 @@ ggplot() +
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
+  guides(
+  color = guide_legend(order = 1),
+  fill  = guide_legend(order = 1),
+  size  = guide_legend(order = 2)
+  ) +
   labs(
     title = "Polls of Likely Voters Only",
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
@@ -473,7 +494,7 @@ label_points <- get_latest_label_point(loess_all)
 # --- Plot with LOESS smoothing and confidence ribbon
 ggplot() +
   geom_point(data = loess_all,
-             aes(x = end_date, y = percentage, color = response, size = size_weight), alpha = 0.1) +
+             aes(x = end_date, y = percentage, color = response, size = sample_size), alpha = 0.1) +
   geom_line(data = loess_all,
             aes(x = end_date, y = fit, color = response), linewidth = 1) +
   geom_ribbon(data = loess_all,
@@ -483,12 +504,18 @@ ggplot() +
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
+  guides(
+  color = guide_legend(order = 1),
+  fill  = guide_legend(order = 1),
+  size  = guide_legend(order = 2)
+  ) +
   labs(
     title = "Polls of Recent Voters Only",
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
@@ -525,7 +552,7 @@ label_points <- get_latest_label_point(loess_all)
 # --- Plot with LOESS smoothing and confidence ribbon
 ggplot() +
   geom_point(data = loess_all,
-             aes(x = end_date, y = percentage, color = response, size = size_weight), alpha = 0.1) +
+             aes(x = end_date, y = percentage, color = response, size = sample_size), alpha = 0.1) +
   geom_line(data = loess_all,
             aes(x = end_date, y = fit, color = response), linewidth = 1) +
   geom_ribbon(data = loess_all,
@@ -536,12 +563,18 @@ ggplot() +
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
+  guides(
+  color = guide_legend(order = 1),
+  fill  = guide_legend(order = 1),
+  size  = guide_legend(order = 2)
+  ) +
   labs(
     title = "Selected Pollsters Only",
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
@@ -578,7 +611,7 @@ label_points <- get_latest_label_point(loess_all)
 ggplot() +
   geom_point(
     data = president_size_long,
-    aes(x = end_date, y = percentage, color = response, fill = response, size = size_weight),
+    aes(x = end_date, y = percentage, color = response, fill = response, size = sample_size),
     shape = 21,
     stroke =0.4,
     alpha = 0.1
@@ -594,12 +627,18 @@ ggplot() +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
   scale_size_continuous(range = c(1, 10)) +
+  guides(
+  color = guide_legend(order = 1),
+  fill  = guide_legend(order = 1),
+  size  = guide_legend(order = 2)
+  ) +
   labs(
     title = "Sample Size Only",
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
@@ -646,12 +685,18 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
+  guides(
+  color = guide_legend(order = 1),
+  fill  = guide_legend(order = 1),
+  size  = guide_legend(order = 2)
+  ) +
   labs(
     title = "Recency Only",
     x = "Poll End Date",
     y = "Response (%)",
     color = "Response",
-    fill = "Response"
+    fill = "Response",
+    size = "Sample Size"
   ) +
   theme_minimal() +
   xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
