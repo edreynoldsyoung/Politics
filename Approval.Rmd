@@ -36,34 +36,58 @@ source(here("R", "load_packages.R"))
 
 ```{r helpers, include=FALSE}
 
-# Helper function to fit a LOESS curve with optional weights and 95% CIs
+# Helper function to fit a LOESS curve with optional weights and 95% CIs.
+# 
+# Expected input columns: end_date (Date), percentage (numeric),
+#   response (character), size_weight (numeric), sample_size (numeric).
+#
+# Arguments:
+#   data       : data frame with the columns above
+#   span       : numeric span (0-1), or NULL to auto-select via fANCOVA::loess.as()
+#   weight_col : name of column to use as LOESS weights, or NULL for unweighted
+#   criterion  : span selection criterion when span = NULL; "aicc" (default) or "gcv"
 
-fit_loess <- function(data, span = 0.5, weight_col = NULL) {
+fit_loess <- function(data, span = NULL, weight_col = NULL, criterion = "aicc") {
+
   weights <- if (!is.null(weight_col)) data[[weight_col]] else NULL
+  x <- as.numeric(data$end_date)
+  y <- data$percentage
 
-  model <- loess(
-    percentage ~ as.numeric(end_date),
-    data = data,
-    weights = weights,
-    span = span
-  )
+  if (is.null(span)) {
+    # Auto-select span using fANCOVA; weights passed via ... to loess internally
+    model <- if (!is.null(weights)) {
+      fANCOVA::loess.as(x, y, criterion = criterion, weights = weights)
+    } else {
+      fANCOVA::loess.as(x, y, criterion = criterion)
+    }
+    selected_span <- model$pars$span
+  } else {
+    model <- loess(
+      percentage ~ as.numeric(end_date),
+      data     = data,
+      weights  = weights,
+      span     = span
+    )
+    selected_span <- span
+  }
 
   preds <- predict(
     model,
-    newdata = data.frame(end_date = as.numeric(data$end_date)),
-    se = TRUE
+    newdata = data.frame(end_date = x),
+    se      = TRUE
   )
 
   tibble(
-    end_date = data$end_date,
-    response = data$response,
+    end_date   = data$end_date,
+    response   = data$response,
     percentage = data$percentage,
     size_weight = data$size_weight,
     sample_size = data$sample_size,
-    fit = preds$fit,
-    se = preds$se.fit,
-    ci_upper = preds$fit + 1.96 * preds$se.fit,
-    ci_lower = preds$fit - 1.96 * preds$se.fit
+    fit        = preds$fit,
+    se         = preds$se.fit,
+    ci_upper   = preds$fit + 1.96 * preds$se.fit,
+    ci_lower   = preds$fit - 1.96 * preds$se.fit,
+    span_used  = selected_span
   )
 }
 

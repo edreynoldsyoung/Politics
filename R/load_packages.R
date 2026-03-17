@@ -2,6 +2,7 @@
 
 # List of required packages
 packages <- c("tidyverse", 
+              "fANCOVA", 
               "tinytex", 
               "ggrepel", 
               "lubridate", 
