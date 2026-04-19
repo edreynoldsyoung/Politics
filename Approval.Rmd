@@ -3,12 +3,12 @@ title: "Presidential Approval"
 author: "Ed Young"
 date:  '`r format(Sys.Date(), "%B %d, %Y")`'
 output:
+  pdf_document: default
+  df_print: kable
   html_document:
     css: styles.css
     highlight: null
     theme: null
-  df_print: kable
-  pdf_document: default
   word_document: default
 ---
 
@@ -128,7 +128,11 @@ approval_fills <- c("yes" = "#D73027", "no" = "#1C6EB9")
 # --- Stroke (outline) colors
 approval_strokes <- c("yes" = "#7F0000", "no" = "#08306B")
 
-
+# Helper to set consistent x-axis padding so geom_text labels aren't clipped.
+# Increase pad_days here to give labels more room.
+approval_xlim <- function(data, pad_days = 40) {
+  xlim(min(data$end_date), max(data$end_date) + pad_days)
+}
 
 ```
 
@@ -246,7 +250,7 @@ ggplot() +
   ) +
   geom_text(
     data = label_points,
-    aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+    aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
     hjust = -0.1, vjust = -0.2, size = 3,
     show.legend = FALSE
   ) +
@@ -261,7 +265,7 @@ ggplot() +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
   
 ```
@@ -344,7 +348,7 @@ ggplot() +
               alpha = 0.2, 
               color = NA) +
   geom_text(data = label_points,
-            aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+            aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
             hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
@@ -362,7 +366,7 @@ ggplot() +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
 ```
 
@@ -406,7 +410,7 @@ ggplot() +
   geom_ribbon(data = loess_all,
               aes(x = end_date, ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
   geom_text(data = label_points,
-          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
@@ -424,7 +428,7 @@ ggplot() +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
 ```
 
@@ -467,7 +471,7 @@ ggplot() +
               alpha = 0.2, 
               color = NA) +
   geom_text(data = label_points,
-          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
@@ -485,7 +489,7 @@ ggplot() +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
 ```
 
@@ -524,7 +528,7 @@ ggplot() +
   geom_ribbon(data = loess_all,
               aes(x = end_date, ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
   geom_text(data = label_points,
-          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
@@ -542,7 +546,7 @@ ggplot() +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
 ```
 
@@ -583,7 +587,7 @@ ggplot() +
               aes(x = end_date, ymin = ci_lower, ymax = ci_upper, fill = response),
               alpha = 0.2, color = NA) +
   geom_text(data = label_points,
-          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
@@ -601,7 +605,7 @@ ggplot() +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
 ```
 
@@ -646,7 +650,7 @@ ggplot() +
               aes(x = end_date, ymin = ci_lower, ymax = ci_upper, fill = response), 
               alpha = 0.4, color = NA) +
   geom_text(data = label_points,
-          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
@@ -665,7 +669,7 @@ ggplot() +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
 ```
 
@@ -705,7 +709,7 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
   geom_line(aes(y = fit), size = 1) +
   geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = response), alpha = 0.2, color = NA) +
   geom_text(data = label_points,
-          aes(x = end_date, y = fit, label = paste0("Latest: ", round(fit, 1), "%")),
+          aes(x = end_date, y = fit, label = paste0(round(fit, 1), "%")),
           hjust = -0.1, vjust = -0.2, size = 3, show.legend = FALSE) +
   scale_fill_manual(values = approval_fills) +
   scale_color_manual(values = approval_strokes) +
@@ -723,7 +727,7 @@ ggplot(loess_all, aes(x = end_date, y = percentage, color = response)) +
     size = "Sample Size"
   ) +
   theme_minimal() +
-  xlim(min(loess_all$end_date), max(loess_all$end_date) + 30)
+  approval_xlim(loess_all)
 
 ```
 
